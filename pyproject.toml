@@ -1,6 +1,6 @@
 [project]
 name = "web-features"
-version = "0.1.0"
+version = "3.0.0"
 description = "Library for working with web-features data"
 authors = [
   {name = "James Graham", email = "james@hoppipolla.co.uk"}
