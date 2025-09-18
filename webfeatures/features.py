@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
-from typing import Annotated, Any, Mapping, Optional
+from typing import Annotated, Any, Literal, Mapping, Optional, Union
 
-from pydantic import BaseModel, BeforeValidator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 
 class BaselineStatus(StrEnum):
@@ -85,6 +85,8 @@ class FeatureDiscouraged(BaseModel):
 
 
 class Feature(BaseModel):
+    kind: Literal["feature"]
+
     caniuse: Annotated[list[str], BeforeValidator(ensure_list)] = []
     compat_features: Annotated[list[str], BeforeValidator(ensure_list)] = []
     description: str
@@ -95,6 +97,18 @@ class Feature(BaseModel):
     spec: Annotated[list[str], BeforeValidator(ensure_list)] = []
     snapshot: Annotated[list[str], BeforeValidator(ensure_list)] = []
     status: FeatureStatus
+
+
+class FeatureMoved(BaseModel):
+    kind: Literal["moved"]
+
+    redirect_target: str
+
+
+class FeatureSplit(BaseModel):
+    kind: Literal["split"]
+
+    redirect_targets: list[str]
 
 
 class Group(BaseModel):
@@ -108,7 +122,14 @@ class Snapshot(BaseModel):
 
 
 class FeaturesFile(BaseModel):
+    model_config = ConfigDict(validate_by_alias=True)
+
     browsers: Mapping[str, BrowserData]
-    features: Mapping[str, Feature]
+    features: Mapping[
+        str,
+        Annotated[
+            Union[Feature, FeatureMoved, FeatureSplit], Field(discriminator="kind")
+        ],
+    ]
     groups: Mapping[str, Group]
     snapshots: Mapping[str, Snapshot]
