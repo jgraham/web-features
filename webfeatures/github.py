@@ -7,6 +7,7 @@ import httpx
 from pydantic import BaseModel
 
 Json = dict[str, "Json"] | list["Json"] | str | int | float | bool | None
+VERSION_RE = re.compile(r"v(\d+)\.(\d+)(?:\.(\d+))?")
 
 
 @dataclass
@@ -25,8 +26,7 @@ class VersionNumber:
 
 
 def parse_version_number(name: str) -> VersionNumber:
-    parser = re.compile(r"v?(\d+)\.(\d+)(?:\.(\d+))?")
-    m = parser.match(name)
+    m = VERSION_RE.match(name)
     if m is None:
         raise ValueError(f"Failed to parse {name} as version string")
     major, minor, patch = m.groups()
@@ -48,7 +48,7 @@ class Release(BaseModel):
     assets: list[Asset]
 
     @property
-    def parsed_version(self):
+    def parsed_version(self) -> VersionNumber:
         return parse_version_number(self.name)
 
 
@@ -82,7 +82,7 @@ def get_data(release: Release) -> Mapping[str, Json]:
     raise ValueError(f"Didn't find data.extended.json in release {release.name}")
 
 
-def get_releases() -> Sequence[Release]:
+def get_releases(include_next: bool = False) -> Sequence[Release]:
     """Get a list of all released versions of web features"""
     next_url: Optional[str] = (
         "https://api.github.com/repos/web-platform-dx/web-features/releases"
@@ -96,20 +96,27 @@ def get_releases() -> Sequence[Release]:
         assert isinstance(data, list)
         for release_data in data:
             assert isinstance(release_data, dict)
-            if release_data.get("draft", False) or release_data.get(
-                "prerelease", False
+            if release_data.get("draft", False) or (
+                release_data.get("prerelease", False) and not include_next
             ):
+                continue
+            tag = str(release_data.get("tag_name", ""))
+            if not VERSION_RE.match(tag) and not (include_next and tag == "next"):
                 continue
             release = Release.model_validate(release_data)
             releases.append(release)
     return releases
 
 
-def latest_release() -> Release:
+def latest_release(include_next: bool = False) -> Release:
     """Get the latest released version of web features"""
-    releases = get_releases()
+    releases = get_releases(include_next)
     if not releases:
         raise ValueError("No releases found")
+    if include_next:
+        for release in releases:
+            if release.name == "web-features@next":
+                return release
     return sorted(releases, key=lambda release: release.parsed_version, reverse=True)[0]
 
 
@@ -118,8 +125,7 @@ def get_release_version(name: str) -> Release:
 
     :param name: The version number of the release e.g. "v2.20.1"
     """
-    name_re = re.compile(r"v\d+\.\d+\.\d+")
-    if not name_re.match(name):
+    if name != "next" and not VERSION_RE.match(name):
         raise ValueError(f"Invalid version {name}")
 
     url = f"https://api.github.com/repos/web-platform-dx/web-features/releases/tags/{name}"
